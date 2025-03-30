@@ -67,16 +67,17 @@ RUN conda create -p /app/env -y python=3.10
 
 SHELL ["conda", "run","--no-capture-output", "-p","/app/env", "/bin/bash", "-c"]
 
-RUN conda install pytorch torchvision torchaudio pytorch-cuda=12.1 -c pytorch -c nvidia && \
+RUN conda install pytorch==2.4.0 torchvision==0.19.0 torchaudio==2.4.0 pytorch-cuda=12.1 -c pytorch -c nvidia && \
     conda clean -ya && \
     conda install -c "nvidia/label/cuda-12.1.1" cuda-nvcc && conda clean -ya && \
     conda install xformers -c xformers && conda clean -ya
-# conda install -c "nvidia/label/cuda-12.1.1" cuda-toolkit && conda clean -ya
 
 COPY --chown=1000:1000 . /app/
 
 RUN pip install -e . && \
     python -m nltk.downloader punkt && \
+    pip install -U ninja && \
     pip install -U flash-attn --no-build-isolation && \
     pip install -U deepspeed && \
+    pip install --upgrade --force-reinstall --no-cache-dir "unsloth[cu121-ampere-torch230] @ git+https://github.com/unslothai/unsloth.git" --no-deps && \
     pip cache purge

@@ -32,11 +32,16 @@ def colab_app():
         "Text Regression",
         "Sequence to Sequence",
         "Token Classification",
-        "DreamBooth LoRA",
         "Image Classification",
+        "Image Regression",
         "Object Detection",
         "Tabular Classification",
         "Tabular Regression",
+        "ST Pair",
+        "ST Pair Classification",
+        "ST Pair Scoring",
+        "ST Triplet",
+        "ST Question Answering",
     ]
 
     TASK_MAP = {
@@ -49,11 +54,16 @@ def colab_app():
         "Text Regression": "text-regression",
         "Sequence to Sequence": "seq2seq",
         "Token Classification": "token-classification",
-        "DreamBooth LoRA": "dreambooth",
         "Image Classification": "image-classification",
+        "Image Regression": "image-regression",
         "Object Detection": "image-object-detection",
         "Tabular Classification": "tabular:classification",
         "Tabular Regression": "tabular:regression",
+        "ST Pair": "st:pair",
+        "ST Pair Classification": "st:pair_class",
+        "ST Pair Scoring": "st:pair_score",
+        "ST Triplet": "st:triplet",
+        "ST Question Answering": "st:qa",
     }
 
     def _get_params(task, param_type):
@@ -248,13 +258,12 @@ def colab_app():
             col_mapping.value = '{"text": "text", "label": "target"}'
             dataset_source_dropdown.disabled = False
             valid_split.disabled = False
-        elif task == "dreambooth":
-            col_mapping.value = '{"image": "image"}'
-            dataset_source_dropdown.value = "Local"
-            dataset_source_dropdown.disabled = True
-            valid_split.disabled = True
         elif task == "image-classification":
             col_mapping.value = '{"image": "image", "label": "label"}'
+            dataset_source_dropdown.disabled = False
+            valid_split.disabled = False
+        elif task == "image-regression":
+            col_mapping.value = '{"image": "image", "label": "target"}'
             dataset_source_dropdown.disabled = False
             valid_split.disabled = False
         elif task == "image-object-detection":
@@ -269,6 +278,26 @@ def colab_app():
             col_mapping.value = '{"id": "id", "label": ["target"]}'
             dataset_source_dropdown.disabled = False
             valid_split.disabled = False
+        elif task == "st:pair":
+            col_mapping.value = '{"sentence1": "anchor", "sentence2": "positive"}'
+            dataset_source_dropdown.disabled = False
+            valid_split.disabled = False
+        elif task == "st:pair_class":
+            col_mapping.value = '{"sentence1": "premise", "sentence2": "hypothesis", "target": "label"}'
+            dataset_source_dropdown.disabled = False
+            valid_split.disabled = False
+        elif task == "st:pair_score":
+            col_mapping.value = '{"sentence1": "sentence1", "sentence2": "sentence2", "target": "score"}'
+            dataset_source_dropdown.disabled = False
+            valid_split.disabled = False
+        elif task == "st:triplet":
+            col_mapping.value = '{"sentence1": "anchor", "sentence2": "positive", "sentence3": "negative"}'
+            dataset_source_dropdown.disabled = False
+            valid_split.disabled = False
+        elif task == "st:qa":
+            col_mapping.value = '{"sentence1": "query", "sentence1": "answer"}'
+            dataset_source_dropdown.disabled = False
+            valid_split.disabled = False
         else:
             col_mapping.value = "Enter column mapping..."
 
@@ -279,8 +308,6 @@ def colab_app():
             base_model.value = MODEL_CHOICES["llm"][0]
         elif TASK_MAP[task_dropdown.value] == "image-classification":
             base_model.value = MODEL_CHOICES["image-classification"][0]
-        elif TASK_MAP[task_dropdown.value] == "dreambooth":
-            base_model.value = MODEL_CHOICES["dreambooth"][0]
         elif TASK_MAP[task_dropdown.value] == "seq2seq":
             base_model.value = MODEL_CHOICES["seq2seq"][0]
         elif TASK_MAP[task_dropdown.value] == "tabular:classification":
@@ -293,6 +320,8 @@ def colab_app():
             base_model.value = MODEL_CHOICES["text-regression"][0]
         elif TASK_MAP[task_dropdown.value] == "image-object-detection":
             base_model.value = MODEL_CHOICES["image-object-detection"][0]
+        elif TASK_MAP[task_dropdown.value].startswith("st:"):
+            base_model.value = MODEL_CHOICES["sentence-transformers"][0]
         else:
             base_model.value = "Enter base model..."
 
@@ -305,61 +334,41 @@ def colab_app():
             train_split_value = train_split.value.strip() if train_split.value.strip() != "" else None
             valid_split_value = valid_split.value.strip() if valid_split.value.strip() != "" else None
             params_val = json.loads(parameters.value)
-            if task_dropdown.value.startswith("llm"):
+            if task_dropdown.value.startswith("llm") or task_dropdown.value.startswith("sentence-transformers"):
                 params_val["trainer"] = task_dropdown.value.split(":")[1]
-                params_val = {k: v for k, v in params_val.items() if k != "trainer"}
+                # params_val = {k: v for k, v in params_val.items() if k != "trainer"}
 
-            if TASK_MAP[task_dropdown.value] == "dreambooth":
-                prompt = params_val.get("prompt")
-                if prompt is None:
-                    raise ValueError("Prompt is required for DreamBooth task")
-                if not isinstance(prompt, str):
-                    raise ValueError("Prompt should be a string")
-                params_val = {k: v for k, v in params_val.items() if k != "prompt"}
-            else:
-                prompt = None
+            chat_template = params_val.get("chat_template")
+            if chat_template is not None:
+                params_val = {k: v for k, v in params_val.items() if k != "chat_template"}
 
             push_to_hub = params_val.get("push_to_hub", True)
             if "push_to_hub" in params_val:
                 params_val = {k: v for k, v in params_val.items() if k != "push_to_hub"}
 
-            if TASK_MAP[task_dropdown.value] != "dreambooth":
-                config = {
-                    "task": TASK_MAP[task_dropdown.value].split(":")[0],
-                    "base_model": base_model.value,
-                    "project_name": project_name.value,
-                    "log": "tensorboard",
-                    "backend": "local",
-                    "data": {
-                        "path": dataset_path.value,
-                        "train_split": train_split_value,
-                        "valid_split": valid_split_value,
-                        "column_mapping": json.loads(col_mapping.value),
-                    },
-                    "params": params_val,
-                    "hub": {
-                        "username": "${{HF_USERNAME}}",
-                        "token": "${{HF_TOKEN}}",
-                        "push_to_hub": push_to_hub,
-                    },
-                }
-            else:
-                config = {
-                    "task": TASK_MAP[task_dropdown.value],
-                    "base_model": base_model.value,
-                    "project_name": project_name.value,
-                    "backend": "local",
-                    "data": {
-                        "path": dataset_path.value,
-                        "prompt": prompt,
-                    },
-                    "params": params_val,
-                    "hub": {
-                        "username": "${HF_USERNAME}",
-                        "token": "${HF_TOKEN}",
-                        "push_to_hub": push_to_hub,
-                    },
-                }
+            config = {
+                "task": TASK_MAP[task_dropdown.value].split(":")[0],
+                "base_model": base_model.value,
+                "project_name": project_name.value,
+                "log": "tensorboard",
+                "backend": "local",
+                "data": {
+                    "path": dataset_path.value,
+                    "train_split": train_split_value,
+                    "valid_split": valid_split_value,
+                    "column_mapping": json.loads(col_mapping.value),
+                },
+                "params": params_val,
+                "hub": {
+                    "username": "${{HF_USERNAME}}",
+                    "token": "${{HF_TOKEN}}",
+                    "push_to_hub": push_to_hub,
+                },
+            }
+            if TASK_MAP[task_dropdown.value].startswith("llm"):
+                config["data"]["chat_template"] = chat_template
+                if config["data"]["chat_template"] == "none":
+                    config["data"]["chat_template"] = None
 
             with open("config.yml", "w") as f:
                 yaml.dump(config, f)

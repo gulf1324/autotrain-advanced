@@ -33,8 +33,11 @@ QUALITY_REQUIRE = [
 
 TESTS_REQUIRE = ["pytest"]
 
+CLIENT_REQUIRES = ["requests", "loguru"]
+
 
 EXTRAS_REQUIRE = {
+    "base": INSTALL_REQUIRES,
     "dev": INSTALL_REQUIRES + QUALITY_REQUIRE + TESTS_REQUIRE,
     "quality": INSTALL_REQUIRES + QUALITY_REQUIRE,
     "docs": INSTALL_REQUIRES
@@ -45,6 +48,7 @@ EXTRAS_REQUIRE = {
         "sphinx-rtd-theme==0.4.3",
         "sphinx-copybutton",
     ],
+    "client": CLIENT_REQUIRES,
 }
 
 setup(
@@ -77,7 +81,17 @@ setup(
     ],
     keywords="automl autonlp autotrain huggingface",
     data_files=[
-        ("static", ["src/autotrain/app/static/logo.png"]),
+        (
+            "static",
+            [
+                "src/autotrain/app/static/logo.png",
+                "src/autotrain/app/static/scripts/fetch_data_and_update_models.js",
+                "src/autotrain/app/static/scripts/listeners.js",
+                "src/autotrain/app/static/scripts/utils.js",
+                "src/autotrain/app/static/scripts/poll.js",
+                "src/autotrain/app/static/scripts/logs.js",
+            ],
+        ),
         (
             "templates",
             [

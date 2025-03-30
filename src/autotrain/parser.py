@@ -5,32 +5,60 @@ import requests
 import yaml
 
 from autotrain import logger
-from autotrain.cli.utils import (
-    dreambooth_munge_data,
+from autotrain.project import (
+    AutoTrainProject,
+    ext_qa_munge_data,
     img_clf_munge_data,
     img_obj_detect_munge_data,
+    img_reg_munge_data,
     llm_munge_data,
+    sent_transformers_munge_data,
     seq2seq_munge_data,
     tabular_munge_data,
     text_clf_munge_data,
     text_reg_munge_data,
     token_clf_munge_data,
+    vlm_munge_data,
 )
-from autotrain.project import AutoTrainProject
 from autotrain.tasks import TASKS
 from autotrain.trainers.clm.params import LLMTrainingParams
-from autotrain.trainers.dreambooth.params import DreamBoothTrainingParams
+from autotrain.trainers.extractive_question_answering.params import ExtractiveQuestionAnsweringParams
 from autotrain.trainers.image_classification.params import ImageClassificationParams
+from autotrain.trainers.image_regression.params import ImageRegressionParams
 from autotrain.trainers.object_detection.params import ObjectDetectionParams
+from autotrain.trainers.sent_transformers.params import SentenceTransformersParams
 from autotrain.trainers.seq2seq.params import Seq2SeqParams
 from autotrain.trainers.tabular.params import TabularParams
 from autotrain.trainers.text_classification.params import TextClassificationParams
 from autotrain.trainers.text_regression.params import TextRegressionParams
 from autotrain.trainers.token_classification.params import TokenClassificationParams
+from autotrain.trainers.vlm.params import VLMTrainingParams
 
 
 @dataclass
 class AutoTrainConfigParser:
+    """
+    AutoTrainConfigParser is a class responsible for parsing and validating the yaml configuration
+    required to run various tasks in the AutoTrain framework. It supports loading configurations
+    from both local files and remote URLs, and maps task aliases to their respective parameters
+    and data munging functions.
+
+    Attributes:
+        config_path (str): Path or URL to the configuration file.
+        config (dict): Parsed configuration data.
+        task_param_map (dict): Mapping of task names to their parameter classes.
+        munge_data_map (dict): Mapping of task names to their data munging functions.
+        task_aliases (dict): Mapping of task aliases to their canonical task names.
+        task (str): The resolved task name from the configuration.
+        backend (str): The backend specified in the configuration.
+        parsed_config (dict): The parsed configuration parameters.
+
+    Methods:
+        __post_init__(): Initializes the parser, loads the configuration, and validates required fields.
+        _parse_config(): Parses the configuration and extracts relevant parameters based on the task.
+        run(): Executes the task with the parsed configuration.
+    """
+
     config_path: str
 
     def __post_init__(self):
@@ -46,7 +74,6 @@ class AutoTrainConfigParser:
 
         self.task_param_map = {
             "lm_training": LLMTrainingParams,
-            "dreambooth": DreamBoothTrainingParams,
             "image_binary_classification": ImageClassificationParams,
             "image_multi_class_classification": ImageClassificationParams,
             "image_object_detection": ObjectDetectionParams,
@@ -56,10 +83,13 @@ class AutoTrainConfigParser:
             "text_multi_class_classification": TextClassificationParams,
             "text_single_column_regression": TextRegressionParams,
             "text_token_classification": TokenClassificationParams,
+            "sentence_transformers": SentenceTransformersParams,
+            "image_single_column_regression": ImageRegressionParams,
+            "vlm": VLMTrainingParams,
+            "text_extractive_question_answering": ExtractiveQuestionAnsweringParams,
         }
         self.munge_data_map = {
             "lm_training": llm_munge_data,
-            "dreambooth": dreambooth_munge_data,
             "tabular": tabular_munge_data,
             "seq2seq": seq2seq_munge_data,
             "image_multi_class_classification": img_clf_munge_data,
@@ -67,6 +97,10 @@ class AutoTrainConfigParser:
             "text_multi_class_classification": text_clf_munge_data,
             "text_token_classification": token_clf_munge_data,
             "text_single_column_regression": text_reg_munge_data,
+            "sentence_transformers": sent_transformers_munge_data,
+            "image_single_column_regression": img_reg_munge_data,
+            "vlm": vlm_munge_data,
+            "text_extractive_question_answering": ext_qa_munge_data,
         }
         self.task_aliases = {
             "llm": "lm_training",
@@ -75,7 +109,6 @@ class AutoTrainConfigParser:
             "llm-generic": "lm_training",
             "llm-dpo": "lm_training",
             "llm-reward": "lm_training",
-            "dreambooth": "dreambooth",
             "image_binary_classification": "image_multi_class_classification",
             "image-binary-classification": "image_multi_class_classification",
             "image_classification": "image_multi_class_classification",
@@ -96,6 +129,28 @@ class AutoTrainConfigParser:
             "image-object-detection": "image_object_detection",
             "object_detection": "image_object_detection",
             "object-detection": "image_object_detection",
+            "st": "sentence_transformers",
+            "st:pair": "sentence_transformers",
+            "st:pair_class": "sentence_transformers",
+            "st:pair_score": "sentence_transformers",
+            "st:triplet": "sentence_transformers",
+            "st:qa": "sentence_transformers",
+            "sentence-transformers:pair": "sentence_transformers",
+            "sentence-transformers:pair_class": "sentence_transformers",
+            "sentence-transformers:pair_score": "sentence_transformers",
+            "sentence-transformers:triplet": "sentence_transformers",
+            "sentence-transformers:qa": "sentence_transformers",
+            "image_single_column_regression": "image_single_column_regression",
+            "image-single-column-regression": "image_single_column_regression",
+            "image_regression": "image_single_column_regression",
+            "image-regression": "image_single_column_regression",
+            "image-scoring": "image_single_column_regression",
+            "vlm:captioning": "vlm",
+            "vlm:vqa": "vlm",
+            "extractive_question_answering": "text_extractive_question_answering",
+            "ext_qa": "text_extractive_question_answering",
+            "ext-qa": "text_extractive_question_answering",
+            "extractive-qa": "text_extractive_question_answering",
         }
         task = self.config.get("task")
         self.task = self.task_aliases.get(task, task)
@@ -118,11 +173,7 @@ class AutoTrainConfigParser:
             "project_name": self.config["project_name"],
         }
 
-        if self.task == "dreambooth":
-            params["image_path"] = self.config["data"]["path"]
-            params["prompt"] = self.config["data"]["prompt"]
-        else:
-            params["data_path"] = self.config["data"]["path"]
+        params["data_path"] = self.config["data"]["path"]
 
         if self.task == "lm_training":
             params["chat_template"] = self.config["data"]["chat_template"]
@@ -133,12 +184,17 @@ class AutoTrainConfigParser:
                 if params["trainer"] not in ["sft", "orpo", "dpo", "reward", "default"]:
                     raise ValueError("Invalid LLM training task")
 
-        if self.task != "dreambooth":
-            for k, v in self.config["data"]["column_mapping"].items():
-                params[k] = v
-            params["train_split"] = self.config["data"]["train_split"]
-            params["valid_split"] = self.config["data"]["valid_split"]
-            params["log"] = self.config["log"]
+        if self.task == "sentence_transformers":
+            params["trainer"] = self.config["task"].split(":")[1]
+
+        if self.task == "vlm":
+            params["trainer"] = self.config["task"].split(":")[1]
+
+        for k, v in self.config["data"]["column_mapping"].items():
+            params[k] = v
+        params["train_split"] = self.config["data"]["train_split"]
+        params["valid_split"] = self.config["data"]["valid_split"]
+        params["log"] = self.config["log"]
 
         if "hub" in self.config:
             params["username"] = self.config["hub"]["username"]

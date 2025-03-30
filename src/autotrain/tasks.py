@@ -9,6 +9,8 @@ NLP_TASKS = {
     "natural_language_inference": 22,
     "lm_training": 9,
     "seq2seq": 28,  # 27 is reserved for generic training
+    "sentence_transformers": 30,
+    "vlm": 31,
 }
 
 VISION_TASKS = {
@@ -16,7 +18,6 @@ VISION_TASKS = {
     "image_multi_class_classification": 18,
     "image_single_column_regression": 24,
     "image_object_detection": 29,
-    "dreambooth": 25,
 }
 
 TABULAR_TASKS = {

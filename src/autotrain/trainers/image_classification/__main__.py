@@ -52,12 +52,14 @@ def train(config):
                 name=dataset_config_name,
                 split=split,
                 token=config.token,
+                trust_remote_code=ALLOW_REMOTE_CODE,
             )
         else:
             train_data = load_dataset(
                 config.data_path,
                 split=config.train_split,
                 token=config.token,
+                trust_remote_code=ALLOW_REMOTE_CODE,
             )
 
     if config.valid_split is not None:
@@ -71,12 +73,14 @@ def train(config):
                     name=dataset_config_name,
                     split=split,
                     token=config.token,
+                    trust_remote_code=ALLOW_REMOTE_CODE,
                 )
             else:
                 valid_data = load_dataset(
                     config.data_path,
                     split=config.valid_split,
                     token=config.token,
+                    trust_remote_code=ALLOW_REMOTE_CODE,
                 )
 
     logger.info(f"Train data: {train_data}")
@@ -153,10 +157,10 @@ def train(config):
         per_device_eval_batch_size=2 * config.batch_size,
         learning_rate=config.lr,
         num_train_epochs=config.epochs,
-        evaluation_strategy=config.evaluation_strategy if config.valid_split is not None else "no",
+        eval_strategy=config.eval_strategy if config.valid_split is not None else "no",
         logging_steps=logging_steps,
         save_total_limit=config.save_total_limit,
-        save_strategy=config.evaluation_strategy if config.valid_split is not None else "no",
+        save_strategy=config.eval_strategy if config.valid_split is not None else "no",
         gradient_accumulation_steps=config.gradient_accumulation,
         report_to=config.log,
         auto_find_batch_size=config.auto_find_batch_size,

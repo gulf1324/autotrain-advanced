@@ -1,13 +1,10 @@
-import torch
 from peft import LoraConfig
-from transformers import AutoConfig, AutoModelForCausalLM, BitsAndBytesConfig, TrainingArguments
 from transformers.trainer_callback import PrinterCallback
-from trl import SFTTrainer
+from trl import SFTConfig, SFTTrainer
 
 from autotrain import logger
 from autotrain.trainers.clm import utils
 from autotrain.trainers.clm.params import LLMTrainingParams
-from autotrain.trainers.common import ALLOW_REMOTE_CODE
 
 
 def train(config):
@@ -22,49 +19,12 @@ def train(config):
     training_args = utils.configure_training_args(config, logging_steps)
     config = utils.configure_block_size(config, tokenizer)
 
-    args = TrainingArguments(**training_args)
+    training_args["dataset_text_field"] = config.text_column
+    training_args["max_seq_length"] = config.block_size
+    training_args["packing"] = True
+    args = SFTConfig(**training_args)
 
-    logger.info("loading model config...")
-    model_config = AutoConfig.from_pretrained(
-        config.model,
-        token=config.token,
-        trust_remote_code=ALLOW_REMOTE_CODE,
-        use_cache=config.disable_gradient_checkpointing,
-    )
-
-    logger.info("loading model...")
-    if config.peft:
-        if config.quantization == "int4":
-            bnb_config = BitsAndBytesConfig(
-                load_in_4bit=True,
-                bnb_4bit_quant_type="nf4",
-                bnb_4bit_compute_dtype=torch.float16,
-                bnb_4bit_use_double_quant=False,
-            )
-        elif config.quantization == "int8":
-            bnb_config = BitsAndBytesConfig(load_in_8bit=True)
-        else:
-            bnb_config = None
-
-        model = AutoModelForCausalLM.from_pretrained(
-            config.model,
-            config=model_config,
-            token=config.token,
-            quantization_config=bnb_config,
-            trust_remote_code=ALLOW_REMOTE_CODE,
-            use_flash_attention_2=config.use_flash_attention_2,
-        )
-    else:
-        model = AutoModelForCausalLM.from_pretrained(
-            config.model,
-            config=model_config,
-            token=config.token,
-            trust_remote_code=ALLOW_REMOTE_CODE,
-            use_flash_attention_2=config.use_flash_attention_2,
-        )
-
-    logger.info(f"model dtype: {model.dtype}")
-    model.resize_token_embeddings(len(tokenizer))
+    model = utils.get_model(config, tokenizer)
 
     if config.peft:
         peft_config = LoraConfig(
@@ -88,10 +48,7 @@ def train(config):
         train_dataset=train_data,
         eval_dataset=valid_data if config.valid_split is not None else None,
         peft_config=peft_config if config.peft else None,
-        dataset_text_field=config.text_column,
-        max_seq_length=config.block_size,
-        tokenizer=tokenizer,
-        packing=True,
+        processing_class=tokenizer,
     )
 
     trainer.remove_callback(PrinterCallback)

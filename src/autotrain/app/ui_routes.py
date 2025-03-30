@@ -2,6 +2,7 @@ import json
 import os
 import signal
 import sys
+import time
 from typing import List
 
 import torch
@@ -18,9 +19,10 @@ from autotrain.app.params import AppParams, get_task_params
 from autotrain.app.utils import get_running_jobs, get_user_and_orgs, kill_process_by_pid, token_verification
 from autotrain.dataset import (
     AutoTrainDataset,
-    AutoTrainDreamboothDataset,
     AutoTrainImageClassificationDataset,
+    AutoTrainImageRegressionDataset,
     AutoTrainObjectDetectionDataset,
+    AutoTrainVLMDataset,
 )
 from autotrain.help import get_app_help
 from autotrain.project import AutoTrainProject
@@ -40,8 +42,269 @@ ui_router = APIRouter()
 templates_path = os.path.join(BASE_DIR, "templates")
 templates = Jinja2Templates(directory=templates_path)
 
+UI_PARAMS = {
+    "mixed_precision": {
+        "type": "dropdown",
+        "label": "Mixed precision",
+        "options": ["fp16", "bf16", "none"],
+    },
+    "optimizer": {
+        "type": "dropdown",
+        "label": "Optimizer",
+        "options": ["adamw_torch", "adamw", "adam", "sgd"],
+    },
+    "scheduler": {
+        "type": "dropdown",
+        "label": "Scheduler",
+        "options": ["linear", "cosine", "cosine_warmup", "constant"],
+    },
+    "eval_strategy": {
+        "type": "dropdown",
+        "label": "Evaluation strategy",
+        "options": ["epoch", "steps"],
+    },
+    "logging_steps": {
+        "type": "number",
+        "label": "Logging steps",
+    },
+    "save_total_limit": {
+        "type": "number",
+        "label": "Save total limit",
+    },
+    "auto_find_batch_size": {
+        "type": "dropdown",
+        "label": "Auto find batch size",
+        "options": [True, False],
+    },
+    "warmup_ratio": {
+        "type": "number",
+        "label": "Warmup proportion",
+    },
+    "max_grad_norm": {
+        "type": "number",
+        "label": "Max grad norm",
+    },
+    "weight_decay": {
+        "type": "number",
+        "label": "Weight decay",
+    },
+    "epochs": {
+        "type": "number",
+        "label": "Epochs",
+    },
+    "batch_size": {
+        "type": "number",
+        "label": "Batch size",
+    },
+    "lr": {
+        "type": "number",
+        "label": "Learning rate",
+    },
+    "seed": {
+        "type": "number",
+        "label": "Seed",
+    },
+    "gradient_accumulation": {
+        "type": "number",
+        "label": "Gradient accumulation",
+    },
+    "block_size": {
+        "type": "number",
+        "label": "Block size",
+    },
+    "model_max_length": {
+        "type": "number",
+        "label": "Model max length",
+    },
+    "add_eos_token": {
+        "type": "dropdown",
+        "label": "Add EOS token",
+        "options": [True, False],
+    },
+    "disable_gradient_checkpointing": {
+        "type": "dropdown",
+        "label": "Disable GC",
+        "options": [True, False],
+    },
+    "use_flash_attention_2": {
+        "type": "dropdown",
+        "label": "Use flash attention",
+        "options": [True, False],
+    },
+    "log": {
+        "type": "dropdown",
+        "label": "Logging",
+        "options": ["tensorboard", "none"],
+    },
+    "quantization": {
+        "type": "dropdown",
+        "label": "Quantization",
+        "options": ["int4", "int8", "none"],
+    },
+    "target_modules": {
+        "type": "string",
+        "label": "Target modules",
+    },
+    "merge_adapter": {
+        "type": "dropdown",
+        "label": "Merge adapter",
+        "options": [True, False],
+    },
+    "peft": {
+        "type": "dropdown",
+        "label": "PEFT/LoRA",
+        "options": [True, False],
+    },
+    "lora_r": {
+        "type": "number",
+        "label": "Lora r",
+    },
+    "lora_alpha": {
+        "type": "number",
+        "label": "Lora alpha",
+    },
+    "lora_dropout": {
+        "type": "number",
+        "label": "Lora dropout",
+    },
+    "model_ref": {
+        "type": "string",
+        "label": "Reference model",
+    },
+    "dpo_beta": {
+        "type": "number",
+        "label": "DPO beta",
+    },
+    "max_prompt_length": {
+        "type": "number",
+        "label": "Prompt length",
+    },
+    "max_completion_length": {
+        "type": "number",
+        "label": "Completion length",
+    },
+    "chat_template": {
+        "type": "dropdown",
+        "label": "Chat template",
+        "options": ["none", "zephyr", "chatml", "tokenizer"],
+    },
+    "padding": {
+        "type": "dropdown",
+        "label": "Padding side",
+        "options": ["right", "left", "none"],
+    },
+    "max_seq_length": {
+        "type": "number",
+        "label": "Max sequence length",
+    },
+    "early_stopping_patience": {
+        "type": "number",
+        "label": "Early stopping patience",
+    },
+    "early_stopping_threshold": {
+        "type": "number",
+        "label": "Early stopping threshold",
+    },
+    "max_target_length": {
+        "type": "number",
+        "label": "Max target length",
+    },
+    "categorical_columns": {
+        "type": "string",
+        "label": "Categorical columns",
+    },
+    "numerical_columns": {
+        "type": "string",
+        "label": "Numerical columns",
+    },
+    "num_trials": {
+        "type": "number",
+        "label": "Number of trials",
+    },
+    "time_limit": {
+        "type": "number",
+        "label": "Time limit",
+    },
+    "categorical_imputer": {
+        "type": "dropdown",
+        "label": "Categorical imputer",
+        "options": ["most_frequent", "none"],
+    },
+    "numerical_imputer": {
+        "type": "dropdown",
+        "label": "Numerical imputer",
+        "options": ["mean", "median", "none"],
+    },
+    "numeric_scaler": {
+        "type": "dropdown",
+        "label": "Numeric scaler",
+        "options": ["standard", "minmax", "maxabs", "robust", "none"],
+    },
+    "vae_model": {
+        "type": "string",
+        "label": "VAE model",
+    },
+    "prompt": {
+        "type": "string",
+        "label": "Prompt",
+    },
+    "resolution": {
+        "type": "number",
+        "label": "Resolution",
+    },
+    "num_steps": {
+        "type": "number",
+        "label": "Number of steps",
+    },
+    "checkpointing_steps": {
+        "type": "number",
+        "label": "Checkpointing steps",
+    },
+    "use_8bit_adam": {
+        "type": "dropdown",
+        "label": "Use 8-bit Adam",
+        "options": [True, False],
+    },
+    "xformers": {
+        "type": "dropdown",
+        "label": "xFormers",
+        "options": [True, False],
+    },
+    "image_square_size": {
+        "type": "number",
+        "label": "Image square size",
+    },
+    "unsloth": {
+        "type": "dropdown",
+        "label": "Unsloth",
+        "options": [True, False],
+    },
+    "max_doc_stride": {
+        "type": "number",
+        "label": "Max doc stride",
+    },
+    "distributed_backend": {
+        "type": "dropdown",
+        "label": "Distributed backend",
+        "options": ["ddp", "deepspeed"],
+    },
+}
+
 
 def graceful_exit(signum, frame):
+    """
+    Handles the SIGTERM signal to perform cleanup and exit the program gracefully.
+
+    Args:
+        signum (int): The signal number.
+        frame (FrameType): The current stack frame (or None).
+
+    Logs:
+        Logs the receipt of the SIGTERM signal and the initiation of cleanup.
+
+    Exits:
+        Exits the program with status code 0.
+    """
     logger.info("SIGTERM received. Performing cleanup...")
     sys.exit(0)
 
@@ -53,6 +316,23 @@ logger.info("AutoTrain started successfully")
 
 
 def user_authentication(request: Request):
+    """
+    Authenticates the user based on the following priority:
+    1. HF_TOKEN environment variable
+    2. OAuth information in session
+    3. Token in bearer header (not implemented in the given code)
+
+    Args:
+        request (Request): The incoming HTTP request object.
+
+    Returns:
+        str: The authenticated token if verification is successful.
+
+    Raises:
+        HTTPException: If the token is invalid or expired and the application is not running in a space.
+
+    If the application is running in a space and authentication fails, it returns a login template response.
+    """
     # priority: hf_token env var > oauth_info in session > token in bearer header
     # if "oauth_info" in request.session:
     if HF_TOKEN is not None:
@@ -109,6 +389,7 @@ async def load_index(request: Request, token: str = Depends(user_authentication)
         "enable_nvcf": ENABLE_NVCF,
         "enable_local": AUTOTRAIN_LOCAL,
         "version": __version__,
+        "time": time.strftime("%Y-%m-%d %H:%M:%S"),
     }
     return templates.TemplateResponse("index.html", context)
 
@@ -135,7 +416,16 @@ async def fetch_params(task: str, param_type: str, authenticated: bool = Depends
     task_params = get_task_params(task, param_type)
     if len(task_params) == 0:
         return {"error": "Task not found"}
-    return task_params
+    ui_params = {}
+    for param in task_params:
+        if param in UI_PARAMS:
+            ui_params[param] = UI_PARAMS[param]
+            ui_params[param]["default"] = task_params[param]
+        else:
+            logger.info(f"Param {param} not found in UI_PARAMS")
+
+    ui_params = dict(sorted(ui_params.items(), key=lambda x: (x[1]["type"], x[1]["label"])))
+    return ui_params
 
 
 @ui_router.get("/model_choices/{task}", response_class=JSONResponse)
@@ -169,10 +459,10 @@ async def fetch_model_choices(
         hub_models = MODEL_CHOICE["text-classification"]
     elif task.startswith("llm"):
         hub_models = MODEL_CHOICE["llm"]
+    elif task.startswith("st:"):
+        hub_models = MODEL_CHOICE["sentence-transformers"]
     elif task == "image-classification":
         hub_models = MODEL_CHOICE["image-classification"]
-    elif task == "dreambooth":
-        hub_models = MODEL_CHOICE["dreambooth"]
     elif task == "seq2seq":
         hub_models = MODEL_CHOICE["seq2seq"]
     elif task == "tabular:classification":
@@ -185,6 +475,12 @@ async def fetch_model_choices(
         hub_models = MODEL_CHOICE["text-regression"]
     elif task == "image-object-detection":
         hub_models = MODEL_CHOICE["image-object-detection"]
+    elif task == "image-regression":
+        hub_models = MODEL_CHOICE["image-regression"]
+    elif task.startswith("vlm:"):
+        hub_models = MODEL_CHOICE["vlm"]
+    elif task == "extractive-qa":
+        hub_models = MODEL_CHOICE["extractive-qa"]
     else:
         raise NotImplementedError
 
@@ -210,20 +506,28 @@ async def handle_form(
     token: str = Depends(user_authentication),
 ):
     """
-    This function is used to create a new project
-    :param project_name: str
-    :param task: str
-    :param base_model: str
-    :param hardware: str
-    :param params: str
-    :param autotrain_user: str
-    :param column_mapping: str
-    :param data_files_training: List[UploadFile]
-    :param data_files_valid: List[UploadFile]
-    :param hub_dataset: str
-    :param train_split: str
-    :param valid_split: str
-    :return: JSONResponse
+    Handle form submission for creating and managing AutoTrain projects.
+
+    Args:
+        project_name (str): The name of the project.
+        task (str): The task type (e.g., "image-classification", "text-classification").
+        base_model (str): The base model to use for training.
+        hardware (str): The hardware configuration (e.g., "local-ui").
+        params (str): JSON string of additional parameters.
+        autotrain_user (str): The username of the AutoTrain user.
+        column_mapping (str): JSON string mapping columns to their roles.
+        data_files_training (List[UploadFile]): List of training data files.
+        data_files_valid (List[UploadFile]): List of validation data files.
+        hub_dataset (str): The Hugging Face Hub dataset identifier.
+        train_split (str): The training split identifier.
+        valid_split (str): The validation split identifier.
+        token (str): The authentication token.
+
+    Returns:
+        dict: A dictionary containing the success status and monitor URL.
+
+    Raises:
+        HTTPException: If there are conflicts or validation errors in the form submission.
     """
     train_split = train_split.strip()
     if len(train_split) == 0:
@@ -248,6 +552,10 @@ async def handle_form(
         )
 
     params = json.loads(params)
+    # convert "null" to None
+    for key in params:
+        if params[key] == "null":
+            params[key] = None
     column_mapping = json.loads(column_mapping)
 
     training_files = [f.file for f in data_files_training if f.filename != ""] if data_files_training else []
@@ -263,19 +571,25 @@ async def handle_form(
             status_code=400, detail="Please upload a dataset or choose a dataset from the Hugging Face Hub."
         )
 
-    if len(hub_dataset) > 0 and task == "dreambooth":
-        raise HTTPException(status_code=400, detail="Dreambooth does not support Hugging Face Hub datasets.")
-
     if len(hub_dataset) > 0:
         if not train_split:
             raise HTTPException(status_code=400, detail="Please enter a training split.")
 
-    file_extension = os.path.splitext(data_files_training[0].filename)[1]
-    file_extension = file_extension[1:] if file_extension.startswith(".") else file_extension
-
     if len(hub_dataset) == 0:
+        file_extension = os.path.splitext(data_files_training[0].filename)[1]
+        file_extension = file_extension[1:] if file_extension.startswith(".") else file_extension
         if task == "image-classification":
             dset = AutoTrainImageClassificationDataset(
+                train_data=training_files[0],
+                token=token,
+                project_name=project_name,
+                username=autotrain_user,
+                valid_data=validation_files[0] if validation_files else None,
+                percent_valid=None,  # TODO: add to UI
+                local=hardware.lower() == "local-ui",
+            )
+        elif task == "image-regression":
+            dset = AutoTrainImageRegressionDataset(
                 train_data=training_files[0],
                 token=token,
                 project_name=project_name,
@@ -294,19 +608,22 @@ async def handle_form(
                 percent_valid=None,  # TODO: add to UI
                 local=hardware.lower() == "local-ui",
             )
-        elif task == "dreambooth":
-            dset = AutoTrainDreamboothDataset(
-                concept_images=data_files_training,
-                concept_name=params["prompt"],
+        elif task.startswith("vlm:"):
+            dset = AutoTrainVLMDataset(
+                train_data=training_files[0],
                 token=token,
                 project_name=project_name,
                 username=autotrain_user,
+                column_mapping=column_mapping,
+                valid_data=validation_files[0] if validation_files else None,
+                percent_valid=None,  # TODO: add to UI
                 local=hardware.lower() == "local-ui",
             )
-
         else:
             if task.startswith("llm"):
                 dset_task = "lm_training"
+            elif task.startswith("st:"):
+                dset_task = "sentence_transformers"
             elif task == "text-classification":
                 dset_task = "text_multi_class_classification"
             elif task == "text-regression":
@@ -314,6 +631,11 @@ async def handle_form(
             elif task == "seq2seq":
                 dset_task = "seq2seq"
             elif task.startswith("tabular"):
+                if "," in column_mapping["label"]:
+                    column_mapping["label"] = column_mapping["label"].split(",")
+                else:
+                    column_mapping["label"] = [column_mapping["label"]]
+                column_mapping["label"] = [col.strip() for col in column_mapping["label"]]
                 subtask = task.split(":")[-1].lower()
                 if len(column_mapping["label"]) > 1 and subtask == "classification":
                     dset_task = "tabular_multi_label_classification"
@@ -327,6 +649,8 @@ async def handle_form(
                     raise NotImplementedError
             elif task == "token-classification":
                 dset_task = "text_token_classification"
+            elif task == "extractive-qa":
+                dset_task = "text_extractive_question_answering"
             else:
                 raise NotImplementedError
             logger.info(f"Task: {dset_task}")
@@ -343,7 +667,7 @@ async def handle_form(
                 local=hardware.lower() == "local-ui",
                 ext=file_extension,
             )
-            if task in ("text-classification", "token-classification"):
+            if task in ("text-classification", "token-classification", "st:pair_class"):
                 dset_args["convert_to_class_label"] = True
             dset = AutoTrainDataset(**dset_args)
         data_path = dset.prepare()
@@ -396,6 +720,8 @@ async def available_accelerators(authenticated: bool = Depends(user_authenticati
     This function is used to fetch the number of available accelerators
     :return: JSONResponse
     """
+    if AUTOTRAIN_LOCAL == 0:
+        return {"accelerators": "Not available in cloud mode."}
     cuda_available = torch.cuda.is_available()
     mps_available = torch.backends.mps.is_available()
     if cuda_available:
@@ -413,6 +739,8 @@ async def is_model_training(authenticated: bool = Depends(user_authentication)):
     This function is used to fetch the number of running jobs
     :return: JSONResponse
     """
+    if AUTOTRAIN_LOCAL == 0:
+        return {"model_training": "Not available in cloud mode."}
     running_jobs = get_running_jobs(DB)
     if running_jobs:
         return {"model_training": True, "pids": running_jobs}
@@ -436,11 +764,7 @@ async def fetch_logs(authenticated: bool = Depends(user_authentication)):
     logs = logs.split("\n")
     logs = logs[::-1]
     # remove lines containing /is_model_training & /accelerators
-    logs = [
-        log
-        for log in logs
-        if "/ui/is_model_training" not in log and "/ui/accelerators" not in log and "/ui/logs" not in log
-    ]
+    logs = [log for log in logs if "/ui/" not in log and "/static/" not in log and "nvidia-ml-py" not in log]
 
     cuda_available = torch.cuda.is_available()
     if cuda_available:

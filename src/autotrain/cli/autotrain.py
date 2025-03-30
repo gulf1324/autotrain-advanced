@@ -3,10 +3,12 @@ import argparse
 from autotrain import __version__, logger
 from autotrain.cli.run_api import RunAutoTrainAPICommand
 from autotrain.cli.run_app import RunAutoTrainAppCommand
-from autotrain.cli.run_dreambooth import RunAutoTrainDreamboothCommand
+from autotrain.cli.run_extractive_qa import RunAutoTrainExtractiveQACommand
 from autotrain.cli.run_image_classification import RunAutoTrainImageClassificationCommand
+from autotrain.cli.run_image_regression import RunAutoTrainImageRegressionCommand
 from autotrain.cli.run_llm import RunAutoTrainLLMCommand
 from autotrain.cli.run_object_detection import RunAutoTrainObjectDetectionCommand
+from autotrain.cli.run_sent_tranformers import RunAutoTrainSentenceTransformersCommand
 from autotrain.cli.run_seq2seq import RunAutoTrainSeq2SeqCommand
 from autotrain.cli.run_setup import RunSetupCommand
 from autotrain.cli.run_spacerunner import RunAutoTrainSpaceRunnerCommand
@@ -32,7 +34,6 @@ def main():
     RunAutoTrainAppCommand.register_subcommand(commands_parser)
     RunAutoTrainLLMCommand.register_subcommand(commands_parser)
     RunSetupCommand.register_subcommand(commands_parser)
-    RunAutoTrainDreamboothCommand.register_subcommand(commands_parser)
     RunAutoTrainAPICommand.register_subcommand(commands_parser)
     RunAutoTrainTextClassificationCommand.register_subcommand(commands_parser)
     RunAutoTrainImageClassificationCommand.register_subcommand(commands_parser)
@@ -43,6 +44,9 @@ def main():
     RunAutoTrainToolsCommand.register_subcommand(commands_parser)
     RunAutoTrainTextRegressionCommand.register_subcommand(commands_parser)
     RunAutoTrainObjectDetectionCommand.register_subcommand(commands_parser)
+    RunAutoTrainSentenceTransformersCommand.register_subcommand(commands_parser)
+    RunAutoTrainImageRegressionCommand.register_subcommand(commands_parser)
+    RunAutoTrainExtractiveQACommand.register_subcommand(commands_parser)
 
     args = parser.parse_args()
 

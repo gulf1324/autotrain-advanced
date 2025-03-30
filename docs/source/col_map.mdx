@@ -17,8 +17,8 @@ Here's a typical example:
 {"text": "text", "label": "target"}
 ```
 
-In this example, the `text column in your dataset corresponds to the text data 
-AutoTrain uses for processing, and the `target`` column is treated as the 
+In this example, the `text` column in your dataset corresponds to the text data 
+AutoTrain uses for processing, and the `target` column is treated as the 
 label for training.
 
 But let's not get confused! AutoTrain has a way to understand what each column in your dataset represents.
@@ -131,10 +131,6 @@ For a single target column, you can pass a list with a single element.
 For multiple target columns, e.g. a multi label classification task, you can pass a list with multiple elements.
 
 
-# DreamBooth LoRA
-
-Dreambooth doesn't require column mapping.
-
 # Image Classification
 
 For image classification, the column mapping should be as follows:
@@ -145,6 +141,53 @@ For image classification, the column mapping should be as follows:
 
 Image classification requires column mapping only when you are using a dataset from Hugging Face Hub.
 For uploaded datasets, leave column mapping as it is.
+
+# Sentence Transformers
+
+For all sentence transformers tasks, one needs to map columns to `sentence1_column`, `sentence2_column`, `sentence3_column` & `target_column` column.
+Not all columns need to be mapped for all trainers of sentence transformers.
+
+## `pair`:
+
+```
+{"sentence1_column": "anchor", "sentence2_column": "positive"}
+```
+
+## `pair_class`:
+
+```
+{"sentence1_column": "premise", "sentence2_column": "hypothesis", "target_column": "label"}
+```
+
+## `pair_score`:
+
+```
+{"sentence1_column": "sentence1", "sentence2_column": "sentence2", "target_column": "score"}
+```
+
+## `triplet`:
+
+```
+{"sentence1_column": "anchor", "sentence2_column": "positive", "sentence3_column": "negative"}
+```
+
+## `qa`:
+
+```
+{"sentence1_column": "query", "sentence2_column": "answer"}
+```
+
+
+# Extractive Question Answering
+
+For extractive question answering, the column mapping should be as follows:
+
+```
+{"text": "context", "question": "question", "answer": "answers"}
+```
+
+where `answer` is a dictionary with keys `text` and `answer_start`.
+
 
 ## Ensuring Accurate Mapping
 

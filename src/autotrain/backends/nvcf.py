@@ -13,6 +13,24 @@ NVCF_API = "https://huggingface.co/api/integrations/dgx/v1"
 
 
 class NVCFRunner(BaseBackend):
+    """
+    NVCFRunner is a backend class responsible for managing and executing NVIDIA NVCF jobs.
+
+    Methods
+    -------
+    _convert_dict_to_object(dictionary):
+        Recursively converts a dictionary to an object using SimpleNamespace.
+
+    _conf_nvcf(token, nvcf_type, url, job_name, method="POST", payload=None):
+        Configures and submits an NVCF job using the specified parameters.
+
+    _poll_nvcf(url, token, job_name, method="get", timeout=86400, interval=30, op="poll"):
+        Polls the status of an NVCF job until completion or timeout.
+
+    create():
+        Initiates the creation and polling of an NVCF job.
+    """
+
     def _convert_dict_to_object(self, dictionary):
         if isinstance(dictionary, dict):
             for key, value in dictionary.items():
@@ -30,7 +48,6 @@ class NVCFRunner(BaseBackend):
             if method.upper() == "POST":
                 response = requests.post(url, headers=headers, json=payload, timeout=30)
             else:
-
                 raise ValueError(f"Unsupported HTTP method: {method}")
 
             response.raise_for_status()
